@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Market Breadth Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --ink:  #0d1117; --ink2: #161b22; --ink3: #1c2330;
+  --wire: #21303f; --dim:  #3d5166; --fog:  #6b8299;
+  --text: #c9d8e8; --bright: #e8f0f8;
+  --g: #3ddc84; --g2: rgba(61,220,132,0.12);
+  --r: #ff4560; --r2: rgba(255,69,96,0.12);
+  --y: #ffd166; --y2: rgba(255,209,102,0.12);
+  --b: #58b4ff; --b2: rgba(88,180,255,0.15);
+  --p: #c084fc;
+  --mono: 'JetBrains Mono', monospace;
+  --disp: 'Syne', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--ink); color:var(--text); font-family:var(--disp); min-height:100vh; overflow-x:hidden; }
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.15;
+  background-image: linear-gradient(var(--wire) 1px,transparent 1px), linear-gradient(90deg,var(--wire) 1px,transparent 1px);
+  background-size: 40px 40px;
+}
+.wrap { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:28px 24px; }
+
+/* LOADING */
+#loader {
+  position:fixed; inset:0; background:var(--ink); z-index:100;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;
+  transition: opacity 0.5s;
+}
+#loader.hidden { opacity:0; pointer-events:none; }
+.loader-ring {
+  width:48px; height:48px; border-radius:50%;
+  border:2px solid var(--wire); border-top-color:var(--b);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.loader-text { font-family:var(--mono); font-size:11px; color:var(--fog); letter-spacing:2px; }
+.loader-sub   { font-family:var(--mono); font-size:9px; color:var(--dim); letter-spacing:1px; }
+
+/* ERROR */
+#errorBox {
+  display:none; background:var(--r2); border:1px solid var(--r);
+  border-radius:4px; padding:20px 24px; margin-bottom:20px;
+  font-family:var(--mono); font-size:11px; color:var(--r);
+}
+
+/* HEADER */
+.hdr { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; gap:20px; flex-wrap:wrap; }
+.hdr-title h1 { font-family:var(--disp); font-size:26px; font-weight:800; letter-spacing:-0.5px; color:var(--bright); }
+.hdr-title p  { font-family:var(--mono); font-size:9px; color:var(--fog); letter-spacing:2px; margin-top:5px; text-transform:uppercase; }
+.hdr-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.regime-pill {
+  font-family:var(--mono); font-size:11px; font-weight:600;
+  letter-spacing:2px; padding:7px 16px; border-radius:2px; text-transform:uppercase;
+}
+.pill-bull    { background:rgba(61,220,132,.1);   color:var(--g); border:1px solid rgba(61,220,132,.4); }
+.pill-neutral { background:rgba(88,180,255,.1);   color:var(--b); border:1px solid rgba(88,180,255,.4); }
+.pill-caution { background:rgba(255,209,102,.1);  color:var(--y); border:1px solid rgba(255,209,102,.4); }
+.pill-bear    { background:rgba(255,69,96,.1);    color:var(--r); border:1px solid rgba(255,69,96,.4); }
+.live-badge {
+  font-family:var(--mono); font-size:9px; color:var(--g);
+  background:rgba(61,220,132,.08); border:1px solid rgba(61,220,132,.3);
+  padding:7px 12px; border-radius:2px; display:flex; align-items:center; gap:6px;
+}
+.live-dot { width:6px; height:6px; border-radius:50%; background:var(--g); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.date-badge { font-family:var(--mono); font-size:9px; color:var(--dim); background:var(--ink2); border:1px solid var(--wire); padding:7px 12px; border-radius:2px; }
+
+/* STATS */
+.stats-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:16px; }
+.stat { background:var(--ink2); border:1px solid var(--wire); border-radius:3px; padding:14px 16px; position:relative; overflow:hidden; }
+.stat::after { content:''; position:absolute; top:0;left:0;right:0; height:2px; }
+.stat.g::after{background:var(--g)} .stat.r::after{background:var(--r)}
+.stat.b::after{background:var(--b)} .stat.y::after{background:var(--y)} .stat.p::after{background:var(--p)}
+.stat-label { font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--fog); text-transform:uppercase; margin-bottom:8px; }
+.stat-val   { font-family:var(--mono); font-size:28px; font-weight:600; line-height:1; }
+.stat.g .stat-val{color:var(--g)} .stat.r .stat-val{color:var(--r)}
+.stat.b .stat-val{color:var(--b)} .stat.y .stat-val{color:var(--y)} .stat.p .stat-val{color:var(--p)}
+.stat-sub { font-family:var(--mono); font-size:9px; color:var(--dim); margin-top:4px; }
+
+/* SIGNAL BAR */
+.signal-bar {
+  background:var(--ink2); border:1px solid var(--wire); border-radius:3px;
+  padding:12px 18px; margin-bottom:16px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+}
+.sig-track { flex:1; min-width:200px; height:8px; background:var(--ink3); border-radius:4px; overflow:hidden; display:flex; }
+.sig-seg { height:100%; transition:width .3s; }
+.sig-legend { display:flex; gap:14px; flex-wrap:wrap; }
+.sig-item { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:9px; color:var(--fog); }
+.sig-dot { width:8px; height:8px; border-radius:1px; }
+
+/* SECTION HEADER */
+.sec { font-family:var(--mono); font-size:9px; letter-spacing:3px; color:var(--dim); text-transform:uppercase;
+  padding:8px 0; border-bottom:1px solid var(--wire); margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+.sec-line { flex:1; height:1px; background:var(--wire); }
+
+/* CHART GRID */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+.g1 { display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:14px; }
+.g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:14px; }
+
+/* CARD */
+.card { background:var(--ink2); border:1px solid var(--wire); border-radius:3px; padding:18px; }
+.card-hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+.card-title { font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--fog); text-transform:uppercase; }
+.card-val   { font-family:var(--mono); font-size:20px; font-weight:600; margin-top:4px; }
+.card-meta  { font-family:var(--mono); font-size:9px; color:var(--dim); text-align:right; }
+
+/* TABS */
+.tabs { display:flex; gap:5px; }
+.tab { font-family:var(--mono); font-size:9px; letter-spacing:1px; padding:4px 10px; border-radius:2px;
+  cursor:pointer; border:1px solid var(--wire); background:transparent; color:var(--dim); transition:all .15s; }
+.tab:hover,.tab.active { border-color:var(--b); color:var(--b); background:rgba(88,180,255,.08); }
+
+/* REGIME DIST */
+.dist-row { display:flex; height:28px; border-radius:3px; overflow:hidden; margin-bottom:8px; }
+.dist-seg { display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; font-weight:600; }
+.dist-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
+.dist-item { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9px; }
+
+/* GAUGE */
+.gauge { margin-bottom:14px; }
+.gauge-label { font-family:var(--mono); font-size:9px; color:var(--fog); margin-bottom:4px; display:flex; justify-content:space-between; }
+.gauge-track { height:18px; background:var(--ink3); border-radius:2px; position:relative; overflow:visible; }
+.gauge-fill  { height:100%; border-radius:2px; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; font-family:var(--mono); font-size:9px; font-weight:600; }
+.gauge-thr   { position:absolute; top:-3px; height:calc(100% + 6px); width:2px; background:var(--y); border-radius:1px; }
+.gauge-thr-lbl { position:absolute; top:-16px; font-family:var(--mono); font-size:8px; color:var(--y); transform:translateX(-50%); white-space:nowrap; }
+
+/* FOOTER */
+.footer { margin-top:24px; padding-top:14px; border-top:1px solid var(--wire); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+.footer-text { font-family:var(--mono); font-size:9px; color:var(--dim); }
+.footer-link { color:var(--b); text-decoration:none; }
+.footer-link:hover { text-decoration:underline; }
+
+/* OVERLAY LEGEND */
+.ovl-legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+.ovl-item   { font-family:var(--mono); font-size:9px; display:flex; align-items:center; gap:5px; color:var(--fog); }
+.ovl-sw { width:14px; height:3px; border-radius:2px; }
+
+@media(max-width:900px){
+  .stats-row{grid-template-columns:repeat(2,1fr);}
+  .g2,.g3{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-ring"></div>
+  <div class="loader-text">LOADING MARKET DATA</div>
+  <div class="loader-sub" id="loaderSub">Fetching latest breadth data from GitHub...</div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+
+  <div id="errorBox"></div>
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="hdr-title">
+      <h1>Market Breadth Monitor</h1>
+      <p>Pradeep Bonde · Stockbee Methodology · S&amp;P 500 Universe · Live Data</p>
+    </div>
+    <div class="hdr-right">
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      <div class="regime-pill pill-bull" id="regimePill">● —</div>
+      <div class="date-badge" id="dateBadge">—</div>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stats-row">
+    <div class="stat b">
+      <div class="stat-label">10-Day Ratio</div>
+      <div class="stat-val" id="sv-ratio">—</div>
+      <div class="stat-sub" id="sv-ratio-sub">—</div>
+    </div>
+    <div class="stat g">
+      <div class="stat-label">Up 25%+ Quarter</div>
+      <div class="stat-val" id="sv-up25q">—</div>
+      <div class="stat-sub">Momentum universe</div>
+    </div>
+    <div class="stat r">
+      <div class="stat-label">Down 25%+ Quarter</div>
+      <div class="stat-val" id="sv-dn25q">—</div>
+      <div class="stat-sub">Damaged stocks</div>
+    </div>
+    <div class="stat g">
+      <div class="stat-label">Up 4%+ Today</div>
+      <div class="stat-val" id="sv-up4">—</div>
+      <div class="stat-sub" id="sv-dn4-sub">↓ — down 4%+</div>
+    </div>
+    <div class="stat y">
+      <div class="stat-label">Swing Signal</div>
+      <div class="stat-val" id="sv-signal" style="font-size:15px;padding-top:6px">—</div>
+      <div class="stat-sub" id="sv-signal-sub">—</div>
+    </div>
+  </div>
+
+  <!-- SIGNAL TIMELINE -->
+  <div class="signal-bar">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--fog);text-transform:uppercase;flex-shrink:0">200-Day Signal</div>
+    <div class="sig-track" id="sigTrack"></div>
+    <div class="sig-legend">
+      <div class="sig-item"><div class="sig-dot" style="background:rgba(255,69,96,.6)"></div>CASH</div>
+      <div class="sig-item"><div class="sig-dot" style="background:rgba(255,209,102,.6)"></div>SELECTIVE</div>
+      <div class="sig-item"><div class="sig-dot" style="background:rgba(61,220,132,.6)"></div>TRADE</div>
+    </div>
+  </div>
+
+  <!-- ROW 1 -->
+  <div class="sec"><span>Primary Indicators</span><div class="sec-line"></div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">10-Day Bull/Bear Ratio</div><div class="card-val" id="cv-ratio" style="color:var(--b)">—</div></div>
+        <div class="card-meta"><div id="cm-ratio">—</div></div>
+      </div>
+      <canvas id="cRatio" height="190"></canvas>
+      <div class="ovl-legend">
+        <div class="ovl-item"><div class="ovl-sw" style="background:rgba(61,220,132,.4)"></div>Bull zone &gt;2.0</div>
+        <div class="ovl-item"><div class="ovl-sw" style="background:rgba(255,69,96,.3)"></div>Bear zone &lt;1.0</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">Up 25%+ Quarter (65-day)</div><div class="card-val" id="cv-up25q" style="color:var(--g)">—</div></div>
+        <div class="card-meta"><div id="cm-up25q">—</div></div>
+      </div>
+      <canvas id="cUp25q" height="190"></canvas>
+      <div class="ovl-legend">
+        <div class="ovl-item"><div class="ovl-sw" style="background:rgba(61,220,132,.4)"></div>Healthy &gt;300</div>
+        <div class="ovl-item"><div class="ovl-sw" style="background:rgba(255,69,96,.3)"></div>Danger &lt;150</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="sec"><span>Daily Breadth &amp; Selling Pressure</span><div class="sec-line"></div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">Up 4%+ vs Down 4%+ Daily</div><div class="card-val" id="cv-daily" style="color:var(--text)">—</div></div>
+        <div class="card-meta" id="cm-daily">—</div>
+      </div>
+      <canvas id="cDaily" height="190"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">Down 25%+ Quarter (Damaged Stocks)</div><div class="card-val" id="cv-dn25q" style="color:var(--r)">—</div></div>
+        <div class="card-meta" id="cm-dn25q">—</div>
+      </div>
+      <canvas id="cDn25q" height="190"></canvas>
+    </div>
+  </div>
+
+  <!-- ROW 3 -->
+  <div class="sec"><span>Composite Views</span><div class="sec-line"></div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">10-Day Bulls vs Bears (Cumulative)</div><div class="card-val" id="cv-bb" style="color:var(--b)">—</div></div>
+      </div>
+      <canvas id="cBB" height="190"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div><div class="card-title">Ratio + Up25Q Normalised Overlay</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--fog);margin-top:4px">Both rising = high-conviction environment</div></div>
+      </div>
+      <canvas id="cOverlay" height="190"></canvas>
+      <div class="ovl-legend">
+        <div class="ovl-item"><div class="ovl-sw" style="background:var(--b)"></div>10-Day Ratio</div>
+        <div class="ovl-item"><div class="ovl-sw" style="background:var(--g);border-top:2px dashed var(--g)"></div>Up25Q</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL RATIO -->
+  <div class="sec"><span>Full History — 10-Day Ratio with Regime Shading</span><div class="sec-line"></div></div>
+  <div class="card g1" style="margin-bottom:14px">
+    <div class="card-hdr">
+      <div><div class="card-title">10-Day Ratio — Full History</div><div class="card-val" id="cv-full" style="color:var(--b)">—</div></div>
+      <div class="tabs">
+        <button class="tab active" onclick="setRange(200,this)">200D</button>
+        <button class="tab" onclick="setRange(100,this)">100D</button>
+        <button class="tab" onclick="setRange(60,this)">60D</button>
+        <button class="tab" onclick="setRange(30,this)">30D</button>
+      </div>
+    </div>
+    <canvas id="cFull" height="150"></canvas>
+  </div>
+
+  <!-- BOTTOM ROW -->
+  <div class="sec"><span>Regime Distribution &amp; Gauges</span><div class="sec-line"></div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">Regime Days Distribution (200D)</div>
+      <div class="dist-row" id="distRow"></div>
+      <div class="dist-legend" id="distLegend"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">Current Values vs Thresholds</div>
+      <div id="gaugeWrap"></div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-text">
+      Market Breadth Monitor · Stockbee / Pradeep Bonde Methodology ·
+      Data: Yahoo Finance via yfinance ·
+      <a class="footer-link" href="https://github.com" target="_blank">View on GitHub</a>
+    </div>
+    <div class="footer-text" id="footerUpdated">—</div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+// IMPORTANT: Replace GITHUB_USERNAME and REPO_NAME with your actual values
+const GITHUB_USERNAME = 'GITHUB_USERNAME';
+const REPO_NAME       = 'market-breadth';
+const BRANCH          = 'main';
+
+const CSV_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPO_NAME}/${BRANCH}/market_breadth_200d_REAL.csv`;
+const LOG_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPO_NAME}/${BRANCH}/update_log.json`;
+
+// ── COLORS ────────────────────────────────────────────────────────────────────
+const C = {
+  g:'#3ddc84', r:'#ff4560', b:'#58b4ff', y:'#ffd166', p:'#c084fc',
+  dim:'#3d5166', fog:'#6b8299', wire:'#21303f', ink3:'#1c2330'
+};
+const REGIME_C = { BULL:C.g, NEUTRAL:C.b, CAUTION:C.y, BEAR:C.r };
+const SIGNAL_C = { CASH:C.r, SELECTIVE:C.y, TRADE:C.g };
+
+// ── CSV PARSER ────────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i]?.trim() ?? ''; });
+    return obj;
+  });
+  return rows;
+}
+
+function rowsToArrays(rows) {
+  if (!rows.length) return null;
+  const n = v => isNaN(parseFloat(v)) ? 0 : parseFloat(v);
+  return {
+    dates:  rows.map(r => r.Date?.slice(5) || r.Date),      // MM-DD
+    fulldates: rows.map(r => r.Date),
+    up4:    rows.map(r => n(r.Up_4pct_Daily)),
+    dn4:    rows.map(r => n(r.Down_4pct_Daily)),
+    ratio:  rows.map(r => n(r['10Day_Ratio'])),
+    up25q:  rows.map(r => n(r.Up_25pct_Quarter)),
+    dn25q:  rows.map(r => n(r.Down_25pct_Quarter)),
+    bulls10:rows.map(r => n(r['10Day_Bulls'])),
+    bears10:rows.map(r => n(r['10Day_Bears'])),
+    regime: rows.map(r => r.Market_Regime?.trim() || 'CAUTION'),
+    signal: rows.map(r => r.Swing_Signal?.trim() || 'CASH'),
+    up25m:  rows.map(r => n(r.Up_25pct_Month || 0)),
+    total:  rows.map(r => n(r.Total_Stocks || 503)),
+  };
+}
+
+// ── FETCH DATA ────────────────────────────────────────────────────────────────
+async function fetchData() {
+  const sub = document.getElementById('loaderSub');
+
+  // Try live GitHub data first
+  try {
+    sub.textContent = 'Fetching CSV from GitHub...';
+    const cacheBust = `?t=${Date.now()}`;
+    const res = await fetch(CSV_URL + cacheBust);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    if (rows.length < 5) throw new Error('CSV too short');
+    sub.textContent = `Loaded ${rows.length} trading days`;
+    return { data: rowsToArrays(rows), source: 'live' };
+  } catch(e) {
+    console.warn('Could not load live data:', e.message);
+    sub.textContent = 'Live data unavailable — using demo data';
+    return { data: getDemoData(), source: 'demo' };
+  }
+}
+
+// ── DEMO DATA (fallback) ──────────────────────────────────────────────────────
+function getDemoData() {
+  // Generate 200 days of realistic demo data
+  const dates = [], up4 = [], dn4 = [], ratio = [], up25q = [], dn25q = [];
+  const bulls10 = [], bears10 = [], regime = [], signal = [];
+  const today = new Date();
+  let up4_win = [], dn4_win = [];
+  let q = 300, dq = 220;
+
+  for (let i = 199; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) { i++; continue; }
+    const s = 0.55 + 0.2 * Math.sin(i / 40) + (Math.random() - 0.5) * 0.08;
+    const u = Math.max(20, Math.round(300 * s + (Math.random() - 0.5) * 60));
+    const d4 = Math.max(10, Math.round(300 * (1 - s) + (Math.random() - 0.5) * 50));
+    up4_win.push(u); dn4_win.push(d4);
+    if (up4_win.length > 10) { up4_win.shift(); dn4_win.shift(); }
+    const sb = up4_win.reduce((a, b) => a + b, 0);
+    const bb = dn4_win.reduce((a, b) => a + b, 0);
+    const r = +(sb / Math.max(bb, 1)).toFixed(2);
+    q = Math.round(q * 0.97 + (150 + s * 400) * 0.03);
+    dq = Math.round(dq * 0.97 + (50 + (1 - s) * 300) * 0.03);
+    dates.push(d.toISOString().slice(5, 10));
+    up4.push(u); dn4.push(d4); ratio.push(r);
+    up25q.push(Math.max(50, Math.min(500, q)));
+    dn25q.push(Math.max(30, Math.min(400, dq)));
+    bulls10.push(sb); bears10.push(bb);
+    const reg = r >= 2.0 && q >= 300 ? 'BULL' : r >= 1.5 && q >= 200 ? 'NEUTRAL' : r < 1.0 || q < 150 ? 'BEAR' : 'CAUTION';
+    const sig = r >= 2.0 && q >= 250 ? 'TRADE' : r >= 1.5 && q >= 180 ? 'SELECTIVE' : 'CASH';
+    regime.push(reg); signal.push(sig);
+  }
+  const n = dates.length;
+  return { dates, fulldates: dates.map(d => '2025-' + d), up4, dn4, ratio, up25q, dn25q, bulls10, bears10, regime, signal, up25m: Array(n).fill(0), total: Array(n).fill(503) };
+}
+
+// ── CHART HELPERS ─────────────────────────────────────────────────────────────
+Chart.defaults.color = C.fog;
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 9;
+Chart.defaults.borderColor = C.wire;
+
+const baseOpts = () => ({
+  responsive: true, maintainAspectRatio: false,
+  animation: { duration: 500 },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#161b22', borderColor: C.wire, borderWidth: 1,
+      titleColor: '#c9d8e8', bodyColor: C.fog, padding: 10,
+      titleFont: { family: "'JetBrains Mono',monospace", size:10 },
+      bodyFont:  { family: "'JetBrains Mono',monospace", size:10 },
+    }
+  },
+  scales: {
+    x: { grid: { color: '#1c2330' }, ticks: { maxTicksLimit:8, maxRotation:0 } },
+    y: { grid: { color: '#1c2330' }, ticks: { maxTicksLimit:5 } }
+  }
+});
+
+const zonePlugin = (zones, maxVal) => ({
+  id: 'zones',
+  beforeDraw(chart) {
+    const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+    zones.forEach(z => {
+      const y1 = y.getPixelForValue(Math.min(z.y1, maxVal));
+      const y2 = y.getPixelForValue(z.y2);
+      ctx.save(); ctx.fillStyle = z.color;
+      ctx.fillRect(left, Math.min(y1,y2), right-left, Math.abs(y1-y2));
+      ctx.restore();
+    });
+  }
+});
+
+const thrPlugin = (thresholds) => ({
+  id: 'thr',
+  afterDraw(chart) {
+    const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+    thresholds.forEach(t => {
+      if (t.v < y.min || t.v > y.max) return;
+      const py = y.getPixelForValue(t.v);
+      ctx.save(); ctx.setLineDash([4,4]);
+      ctx.strokeStyle = t.c + '88'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(right, py); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = t.c; ctx.font = '8px JetBrains Mono';
+      ctx.fillText(t.l, right + 4, py + 3);
+      ctx.restore();
+    });
+  }
+});
+
+const areaGrd = (ctx, c, h) => {
+  const g = ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0, c + '33'); g.addColorStop(1, c + '03'); return g;
+};
+
+const normalize = arr => {
+  const mn = Math.min(...arr), mx = Math.max(...arr);
+  return arr.map(v => mx === mn ? 50 : (v - mn) / (mx - mn) * 100);
+};
+
+// ── RENDER DASHBOARD ──────────────────────────────────────────────────────────
+let D, fullChart;
+
+function renderAll(data, source) {
+  D = data;
+  const N = D.dates.length;
+  const last = k => D[k][N-1];
+
+  // Update header
+  const curReg = last('regime'), curSig = last('signal');
+  const regPill = document.getElementById('regimePill');
+  regPill.textContent = '● ' + curReg;
+  regPill.className = 'regime-pill ' + { BULL:'pill-bull', NEUTRAL:'pill-neutral', CAUTION:'pill-caution', BEAR:'pill-bear' }[curReg];
+  document.getElementById('dateBadge').textContent = D.fulldates ? D.fulldates[N-1] : D.dates[N-1];
+
+  // Stat cards
+  const r = last('ratio');
+  document.getElementById('sv-ratio').textContent = r.toFixed(2);
+  document.getElementById('sv-ratio').style.color = r >= 2 ? C.g : r >= 1.5 ? C.b : r < 1 ? C.r : C.y;
+  document.getElementById('sv-ratio-sub').textContent = r >= 2 ? '✓ Swing long zone' : r >= 1.5 ? '~ Neutral zone' : '✗ Below threshold';
+  document.getElementById('sv-up25q').textContent = last('up25q');
+  document.getElementById('sv-dn25q').textContent = last('dn25q');
+  document.getElementById('sv-up4').textContent = last('up4');
+  document.getElementById('sv-dn4-sub').textContent = `↓ ${last('dn4')} down 4%+`;
+  const sigEl = document.getElementById('sv-signal');
+  sigEl.textContent = curSig;
+  sigEl.style.color = SIGNAL_C[curSig];
+  document.getElementById('sv-signal-sub').textContent = curSig === 'TRADE' ? '✓ Full position size' : curSig === 'SELECTIVE' ? '~ Small size only' : '✗ Stay in cash';
+
+  // Card vals
+  document.getElementById('cv-ratio').textContent = r.toFixed(2);
+  document.getElementById('cv-up25q').textContent = last('up25q');
+  document.getElementById('cv-dn25q').textContent = last('dn25q');
+  document.getElementById('cv-daily').textContent = `↑${last('up4')}  ↓${last('dn4')}`;
+  document.getElementById('cv-bb').textContent = `${last('bulls10').toLocaleString()} / ${last('bears10').toLocaleString()}`;
+  document.getElementById('cv-full').textContent = r.toFixed(2);
+
+  const daysAboveR = D.ratio.filter(v => v >= 2.0).length;
+  const daysAboveQ = D.up25q.filter(v => v >= 300).length;
+  document.getElementById('cm-ratio').textContent = `${daysAboveR}/200 days ≥2.0`;
+  document.getElementById('cm-up25q').textContent = `${daysAboveQ}/200 days ≥300`;
+  const avgUp = Math.round(D.up4.reduce((a,b)=>a+b,0)/N);
+  const avgDn = Math.round(D.dn4.reduce((a,b)=>a+b,0)/N);
+  document.getElementById('cm-daily').textContent = `Avg Up: ${avgUp} · Avg Dn: ${avgDn}`;
+  document.getElementById('cm-dn25q').textContent = `${D.dn25q.filter(v=>v<200).length} days below 200`;
+
+  // Signal timeline
+  const track = document.getElementById('sigTrack');
+  track.innerHTML = '';
+  D.signal.forEach(s => {
+    const seg = document.createElement('div');
+    seg.className = 'sig-seg';
+    seg.style.flex = '1';
+    seg.style.background = s==='TRADE' ? 'rgba(61,220,132,0.6)' : s==='SELECTIVE' ? 'rgba(255,209,102,0.5)' : 'rgba(255,69,96,0.55)';
+    track.appendChild(seg);
+  });
+
+  // Footer
+  document.getElementById('footerUpdated').textContent = source === 'demo' ? '⚠ Demo data — configure GitHub URL in dashboard' : `Data updated · ${new Date().toLocaleString()}`;
+
+  // Build charts
+  const labels = D.dates;
+  const maxRatio = Math.max(...D.ratio) * 1.1;
+
+  // 1. Ratio
+  new Chart(document.getElementById('cRatio'), {
+    type: 'line',
+    data: { labels, datasets: [{ data: D.ratio, borderColor: C.b, borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, backgroundColor: ctx => areaGrd(ctx.chart.ctx, C.b, 190), tension:0.3 }] },
+    options: { ...baseOpts(), scales: { ...baseOpts().scales, y: { ...baseOpts().scales.y, min:0, max:maxRatio, ticks:{ callback: v=>v.toFixed(1) } } } },
+    plugins: [ zonePlugin([{y1:2.0,y2:maxRatio,color:'rgba(61,220,132,0.07)'},{y1:0,y2:1.0,color:'rgba(255,69,96,0.07)'}], maxRatio), thrPlugin([{v:2.0,c:C.g,l:'2.0'},{v:1.0,c:C.r,l:'1.0'}]) ]
+  });
+
+  // 2. Up25Q
+  const maxQ = Math.max(...D.up25q) * 1.1;
+  new Chart(document.getElementById('cUp25q'), {
+    type:'line',
+    data:{ labels, datasets:[{ data:D.up25q, borderColor:C.g, borderWidth:2, pointRadius:0, fill:true, backgroundColor: ctx => areaGrd(ctx.chart.ctx, C.g, 190), tension:0.3 }] },
+    options:{ ...baseOpts(), scales:{ ...baseOpts().scales, y:{ ...baseOpts().scales.y, min:0 } } },
+    plugins:[ zonePlugin([{y1:300,y2:maxQ,color:'rgba(61,220,132,0.07)'},{y1:0,y2:150,color:'rgba(255,69,96,0.07)'}], maxQ), thrPlugin([{v:300,c:C.g,l:'300'},{v:150,c:C.r,l:'150'}]) ]
+  });
+
+  // 3. Daily bars
+  new Chart(document.getElementById('cDaily'), {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Up 4%+', data:D.up4,         backgroundColor:'rgba(61,220,132,0.7)', borderWidth:0, barPercentage:0.8 },
+      { label:'Dn 4%+', data:D.dn4.map(v=>-v), backgroundColor:'rgba(255,69,96,0.7)',  borderWidth:0, barPercentage:0.8 }
+    ]},
+    options:{ ...baseOpts(), plugins:{ ...baseOpts().plugins, legend:{ display:true, labels:{ color:C.fog, boxWidth:10 } }, tooltip:{ ...baseOpts().plugins.tooltip, callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${Math.abs(ctx.raw)}` } } }, scales:{ ...baseOpts().scales, y:{ ...baseOpts().scales.y, ticks:{ callback: v=>Math.abs(v) } } } }
+  });
+
+  // 4. Dn25Q
+  new Chart(document.getElementById('cDn25q'), {
+    type:'line',
+    data:{ labels, datasets:[{ data:D.dn25q, borderColor:C.r, borderWidth:2, pointRadius:0, fill:true, backgroundColor: ctx=>areaGrd(ctx.chart.ctx, C.r, 190), tension:0.3 }] },
+    options:{ ...baseOpts() },
+    plugins:[ thrPlugin([{v:200,c:C.y,l:'200'}]) ]
+  });
+
+  // 5. Bull/Bear
+  new Chart(document.getElementById('cBB'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'10D Bulls', data:D.bulls10, borderColor:C.g, borderWidth:1.5, pointRadius:0, fill:true, backgroundColor:'rgba(61,220,132,0.12)', tension:0.3 },
+      { label:'10D Bears', data:D.bears10, borderColor:C.r, borderWidth:1.5, pointRadius:0, fill:true, backgroundColor:'rgba(255,69,96,0.12)', tension:0.3 }
+    ]},
+    options:{ ...baseOpts(), plugins:{ ...baseOpts().plugins, legend:{ display:true, labels:{ color:C.fog, boxWidth:10 } } } }
+  });
+
+  // 6. Normalised overlay
+  new Chart(document.getElementById('cOverlay'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'10D Ratio', data:normalize(D.ratio),  borderColor:C.b, borderWidth:2, pointRadius:0, fill:false, tension:0.3 },
+      { label:'Up25Q',     data:normalize(D.up25q),  borderColor:C.g, borderWidth:2, pointRadius:0, fill:false, tension:0.3, borderDash:[5,3] }
+    ]},
+    options:{ ...baseOpts(), plugins:{ ...baseOpts().plugins, legend:{ display:true, labels:{ color:C.fog, boxWidth:10 } } }, scales:{ ...baseOpts().scales, y:{ ...baseOpts().scales.y, min:0, max:100, ticks:{ callback: v=>v+'%' } } } }
+  });
+
+  // 7. Full ratio (range-selectable)
+  buildFullChart(200);
+
+  // Regime distribution
+  const counts = { BULL:0, NEUTRAL:0, CAUTION:0, BEAR:0 };
+  D.regime.forEach(r => counts[r] = (counts[r]||0) + 1);
+  const distRow = document.getElementById('distRow');
+  const distLeg = document.getElementById('distLegend');
+  distRow.innerHTML = ''; distLeg.innerHTML = '';
+  Object.entries(counts).forEach(([r, c]) => {
+    const seg = document.createElement('div');
+    seg.className = 'dist-seg';
+    seg.style.cssText = `width:${c/N*100}%;background:${REGIME_C[r]}22;border-right:1px solid ${REGIME_C[r]}44;color:${REGIME_C[r]}`;
+    if (c/N > 0.07) seg.textContent = `${c}d`;
+    seg.title = `${r}: ${c} days`;
+    distRow.appendChild(seg);
+    const leg = document.createElement('div');
+    leg.className = 'dist-item';
+    leg.innerHTML = `<div style="width:8px;height:8px;background:${REGIME_C[r]};border-radius:1px"></div><span style="color:${REGIME_C[r]}">${r}</span><span style="color:var(--dim)">${c}d · ${(c/N*100).toFixed(0)}%</span>`;
+    distLeg.appendChild(leg);
+  });
+
+  // Gauges
+  const gw = document.getElementById('gaugeWrap');
+  gw.innerHTML = '';
+  const gauges = [
+    { label:'10-Day Ratio', val:r, max:4.5, thr:2.0, color:r>=2?C.g:r>=1.5?C.b:C.r },
+    { label:'Up 25%+ Quarter', val:last('up25q'), max:500, thr:300, color:last('up25q')>=300?C.g:C.y },
+    { label:'Down 25%+ Quarter', val:last('dn25q'), max:400, thr:200, inv:true, color:last('dn25q')<200?C.g:last('dn25q')<280?C.y:C.r },
+  ];
+  gauges.forEach(g => {
+    const pct = Math.min(g.val/g.max*100, 100);
+    const tp  = g.thr/g.max*100;
+    gw.innerHTML += `
+      <div class="gauge">
+        <div class="gauge-label"><span>${g.label}</span><span style="color:${g.color}">${typeof g.val==='number'&&g.val%1!==0?g.val.toFixed(2):g.val}</span></div>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width:${pct}%;background:${g.color}22;color:${g.color};border-right:2px solid ${g.color}"></div>
+          <div class="gauge-thr" style="left:${tp}%"><div class="gauge-thr-lbl">${g.thr}</div></div>
+        </div>
+      </div>`;
+  });
+}
+
+function buildFullChart(range) {
+  if (fullChart) fullChart.destroy();
+  const sl  = D.ratio.slice(-range);
+  const dl  = D.dates.slice(-range);
+  const rsl = D.regime.slice(-range);
+  const ptC = sl.map((v, i) => REGIME_C[rsl[i]] + 'cc');
+  const maxV = Math.max(...sl) * 1.1;
+
+  fullChart = new Chart(document.getElementById('cFull'), {
+    type:'line',
+    data:{ labels:dl, datasets:[{ data:sl, borderColor:C.b, borderWidth:1.5, pointRadius:2, pointBackgroundColor:ptC, pointBorderWidth:0, fill:true, backgroundColor: ctx=>{ const g=ctx.chart.ctx.createLinearGradient(0,0,0,150); g.addColorStop(0,'rgba(88,180,255,0.2)'); g.addColorStop(1,'rgba(88,180,255,0.01)'); return g; }, tension:0.25 }] },
+    options:{ ...baseOpts(), scales:{ ...baseOpts().scales, x:{ ...baseOpts().scales.x, ticks:{ maxTicksLimit:14, maxRotation:0 } }, y:{ ...baseOpts().scales.y, min:0, max:maxV, ticks:{ callback: v=>v.toFixed(1) } } } },
+    plugins:[ zonePlugin([{y1:2.0,y2:maxV,color:'rgba(61,220,132,0.07)'},{y1:0,y2:1.0,color:'rgba(255,69,96,0.07)'}], maxV), thrPlugin([{v:2.0,c:C.g,l:'2.0'},{v:1.0,c:C.r,l:'1.0'}]) ]
+  });
+}
+
+function setRange(n, btn) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildFullChart(n);
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+(async () => {
+  const { data, source } = await fetchData();
+  document.getElementById('loader').classList.add('hidden');
+  document.getElementById('app').style.display = 'block';
+
+  if (GITHUB_USERNAME === 'GITHUB_USERNAME') {
+    const eb = document.getElementById('errorBox');
+    eb.style.display = 'block';
+    eb.textContent = '⚠  Demo mode — open dashboard/index.html and set GITHUB_USERNAME at the top of the script to load your real live data.';
+  }
+
+  renderAll(data, source);
+})();
+</script>
+</body>
+</html>
