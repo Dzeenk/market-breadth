@@ -46,8 +46,11 @@ jobs:
 
       - name: Copy CSV to docs folder
         run: |
+          mkdir -p docs
           cp market_breadth_200d_REAL.csv docs/market_breadth_200d_REAL.csv
           cp update_log.json docs/update_log.json
+          echo "Files in docs:"
+          ls -la docs/
 
       - name: Commit and push
         run: |
