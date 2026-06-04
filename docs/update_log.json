@@ -1,11 +1,11 @@
 {
-  "last_updated": "2026-06-04T00:14:13.542034Z",
-  "latest_date": "2026-06-03",
-  "ratio": 1.95,
-  "up25q": 8,
-  "dn25q": 3,
-  "up4": 3,
-  "dn4": 5,
+  "last_updated": "2026-06-04T23:46:20.173653Z",
+  "latest_date": "2026-06-04",
+  "ratio": 2.15,
+  "up25q": 7,
+  "dn25q": 2,
+  "up4": 9,
+  "dn4": 1,
   "regime": "BEAR",
   "signal": "CASH",
   "total_rows": 200
