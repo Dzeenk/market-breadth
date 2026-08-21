@@ -1,11 +1,11 @@
 {
-  "last_updated": "2026-08-20T22:56:40.933229Z",
-  "latest_date": "2026-08-20",
-  "ratio": 1.73,
-  "up25q": 6,
+  "last_updated": "2026-08-21T22:52:13.114995Z",
+  "latest_date": "2026-08-21",
+  "ratio": 1.9,
+  "up25q": 8,
   "dn25q": 1,
-  "up4": 0,
-  "dn4": 2,
+  "up4": 1,
+  "dn4": 0,
   "regime": "BEAR",
   "signal": "CASH",
   "total_rows": 200
