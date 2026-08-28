@@ -1,9 +1,8 @@
 Date,Up_4pct_Daily,Down_4pct_Daily,Up_2pct_Daily,Down_2pct_Daily,Up_25pct_Quarter,Down_25pct_Quarter,Up_50pct_Quarter,Up_25pct_Month,Total_Stocks,10Day_Bulls,10Day_Bears,10Day_Ratio,DCR,Market_Regime,Swing_Signal
-2025-11-07,0,0,7,2,8,0,0,1,64,,,,0,BEAR,CASH
 2025-11-10,4,0,8,2,8,0,1,1,64,,,,4,BEAR,CASH
 2025-11-11,3,0,17,2,9,0,1,1,64,,,,7,BEAR,CASH
 2025-11-12,1,0,7,2,7,0,1,1,64,,,,8,BEAR,CASH
-2025-11-13,1,3,2,16,5,0,1,1,64,9,3,3.0,6,BEAR,CASH
+2025-11-13,1,3,2,16,5,0,1,1,64,,,,6,BEAR,CASH
 2025-11-14,0,0,0,6,5,0,1,1,64,9,3,3.0,6,BEAR,CASH
 2025-11-17,0,2,2,9,4,0,0,1,64,9,5,1.8,4,BEAR,CASH
 2025-11-18,1,3,5,9,5,0,0,2,64,10,8,1.25,2,BEAR,CASH
@@ -199,3 +198,4 @@ Date,Up_4pct_Daily,Down_4pct_Daily,Up_2pct_Daily,Down_2pct_Daily,Up_25pct_Quarte
 2026-08-24,0,0,5,6,6,1,0,1,63,16,10,1.6,90,BEAR,CASH
 2026-08-25,1,0,8,2,5,1,0,1,63,17,9,1.89,91,BEAR,CASH
 2026-08-26,0,0,1,5,6,1,0,1,63,17,9,1.89,91,BEAR,CASH
+2026-08-27,4,0,7,9,5,1,0,1,63,17,8,2.12,95,BEAR,CASH
